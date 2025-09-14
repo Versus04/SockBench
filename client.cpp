@@ -3,13 +3,25 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <chrono>
+#include <fstream>
 
 #define PORT 8080
-#define BUFFER_SIZE 4096
-#define NUM_MESSAGES 1000
-#define PAYLOAD_SIZE 64
+#define BUFFER_SIZE 65536
 
-int main() {
+int main(int argc, char* argv[]) {
+    if (argc != 3) {
+        std::cerr << "Usage: ./client <message_size> <num_messages>\n";
+        return -1;
+    }
+
+    int payloadSize = std::stoi(argv[1]);
+    int numMessages = std::stoi(argv[2]);
+
+    if (payloadSize > BUFFER_SIZE) {
+        std::cerr << "Message size too large (max " << BUFFER_SIZE << ")\n";
+        return -1;
+    }
+
     int clientSocket;
     struct sockaddr_in serverAddr;
     char recvBuffer[BUFFER_SIZE] = {0};
@@ -33,24 +45,31 @@ int main() {
         return -1;
     }
 
-    std::string payload(PAYLOAD_SIZE, 'A');
+    std::string payload(payloadSize, 'A');
 
     auto startTime = std::chrono::high_resolution_clock::now();
 
-    for (int i = 0; i < NUM_MESSAGES; i++) {
-        send(clientSocket, payload.c_str(), PAYLOAD_SIZE, 0);
-        read(clientSocket, recvBuffer, PAYLOAD_SIZE);
+    for (int i = 0; i < numMessages; i++) {
+        send(clientSocket, payload.c_str(), payloadSize, 0);
+        read(clientSocket, recvBuffer, payloadSize);
     }
 
     auto endTime = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = endTime - startTime;
 
-    double avgLatencyMs = (elapsed.count() * 1000) / NUM_MESSAGES;
-    double throughputMBs = (NUM_MESSAGES * PAYLOAD_SIZE) / (elapsed.count() * 1024 * 1024);
+    double avgLatencyMs = (elapsed.count() * 1000) / numMessages;
+    double throughputMBs = (numMessages * payloadSize) / (elapsed.count() * 1024 * 1024);
 
-    std::cout << "Sent " << NUM_MESSAGES << " messages of " << PAYLOAD_SIZE << " bytes\n";
+    std::cout << "Sent " << numMessages << " messages of " << payloadSize << " bytes\n";
     std::cout << "Average Latency: " << avgLatencyMs << " ms\n";
     std::cout << "Throughput: " << throughputMBs << " MB/s\n";
+
+    std::ofstream csv("results.csv", std::ios::app);
+    if (csv.tellp() == 0) {
+        csv << "message_size,num_messages,avg_latency_ms,throughput_MBps\n";
+    }
+    csv << payloadSize << "," << numMessages << "," << avgLatencyMs << "," << throughputMBs << "\n";
+    csv.close();
 
     close(clientSocket);
     return 0;
